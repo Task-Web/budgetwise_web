@@ -1301,19 +1301,6 @@ const CheckIcon = () => (
   </svg>
 );
 
-const ChatIcon = () => (
-  <svg viewBox="0 0 24 24" role="img">
-    <path
-      d="M5 7.5h14v8.2a2 2 0 0 1-2 2H9l-4 3v-3H7a2 2 0 0 1-2-2z"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
 const LeafIcon = () => (
   <svg viewBox="0 0 24 24" role="img">
     <path
@@ -2220,9 +2207,7 @@ function App() {
   const handleNavClick = (label) => {
     if (label === "Plans") {
       setPlansDropdownOpen((prev) => !prev);
-      return;
     }
-    notify(`${label} page is not available in this demo.`);
   };
 
   const handlePlansDropdownSelect = (option) => {
@@ -3081,10 +3066,10 @@ function App() {
                 <section className="checkout-section checkout-terms">
                   <p className="terms-text">
                     By placing your order, you agree to our{" "}
-                    <a href="#">Terms &amp; Conditions</a>,{" "}
-                    <a href="#">Refund Policy</a> and <a href="#">Privacy Policy</a>.
+                    <span className="terms-link">Terms &amp; Conditions</span>,{" "}
+                    <span className="terms-link">Refund Policy</span> and <span className="terms-link">Privacy Policy</span>.
                     Your personal data will be used to process your order, support your experience throughout this
-                    website, and for other purposes described in our <a href="#">Privacy Policy</a>.
+                    website, and for other purposes described in our <span className="terms-link">Privacy Policy</span>.
                   </p>
                   <p className="terms-text activation-notice">
                     <strong>Plans must be activated within 45 days.</strong>
@@ -4183,15 +4168,6 @@ function App() {
           ))}
         </div>
       </footer>
-
-      <button
-        type="button"
-        className="chat-bubble"
-        aria-label="Chat"
-        onClick={() => notify("Chat is not available in this demo.")}
-      >
-        <ChatIcon />
-      </button>
     </div>
   );
 }
