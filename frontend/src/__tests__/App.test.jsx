@@ -10,45 +10,63 @@ const buildResponse = (data, status = 200) =>
 describe("App", () => {
   const statePayload = {
     user_id: "test-user",
-    state: {
-      meta: { created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z", version: 1 },
-      data: { sample: true },
-      note: null,
+    session: {
+      view: "home",
+      selectedPlan: "unlimited",
+      selectedTerm: "3",
+      selectedSim: "esim",
+      factsTerm: "3",
+      selectedBrand: "",
+      selectedModel: "",
+      cartItems: [],
+      faqOpenId: "",
+      family: {
+        lines: 1,
+        planType: "",
+        simTypes: ["esim"],
+        brands: [""],
+        models: [""],
+        includesOpen: false,
+        message: "",
+        discountType: "",
+        discountModalOpen: false,
+      },
+      coverage: { zip: "", message: "", deviceMessage: "" },
+      promo: {
+        open: false,
+        code: "",
+        discount: 0,
+        applied: false,
+        adOpen: true,
+        message: "",
+      },
+      newsletter: { email: "", subscribedAt: "", message: "" },
     },
   };
 
-  const infoPayload = {
-    app_name: "Base Experiment Backend",
-    python_version: "3.11.0",
-    env: { python_version: "3.11.0", platform: "test-os", env_mode: "dev" },
-    request: { client: "127.0.0.1", headers: {}, path: "/api/info", method: "GET", user_id: "test-user" },
-  };
-
   beforeEach(() => {
-    const responses = [statePayload, infoPayload];
-    global.fetch = vi.fn(async () => {
-      const next = responses.shift();
-      return buildResponse(next ?? {});
-    });
+    window.scrollTo = vi.fn();
+    global.fetch = vi.fn(async () => buildResponse(statePayload));
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("renders user cookie and state payload", async () => {
+  it("renders the BudgetWise storefront", async () => {
     render(<App />);
 
-    expect(await screen.findByText(/User cookie: test-user/)).toBeInTheDocument();
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
-    expect(screen.getByText(/Server view/i)).toBeInTheDocument();
-    expect(screen.getByText(/Per-user state playground/i)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /Pay upfront for bigger savings/i })
+    ).toBeInTheDocument();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("heading", { name: /Choose Your Plan/i })).toBeInTheDocument();
   });
 
-  it("shows default editor content", async () => {
+  it("renders product navigation without a generic editor", async () => {
     render(<App />);
-    await screen.findByText(/User cookie: test-user/);
-    const textarea = screen.getByRole("textbox", { name: /json payload/i });
-    expect(textarea.value).toMatch(/\"experiment\"/);
+    await screen.findByRole("heading", { name: /Pay upfront for bigger savings/i });
+    expect(screen.queryByRole("textbox", { name: /json payload/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Plans$/i })).toBeInTheDocument();
   });
 });

@@ -1412,8 +1412,7 @@ function App() {
   });
 
   const isHydrating = useRef(true);
-  const lastSyncedRef = useRef("");
-  const syncTimerRef = useRef(null);
+  const persistedRef = useRef({});
 
   const applyBudgetwiseState = (budgetwiseState) => {
     setView(budgetwiseState.view);
@@ -1451,47 +1450,6 @@ function App() {
   const notify = (message) => {
     setToast(message);
   };
-
-  const buildBudgetwiseState = () => ({
-    view,
-    selectedPlan,
-    selectedTerm,
-    selectedSim,
-    factsTerm,
-    selectedBrand,
-    selectedModel,
-    cartItems,
-    faqOpenId,
-    family: {
-      lines: familyLines,
-      planType: familyPlanType,
-      simTypes: familySim,
-      brands: familyBrand,
-      models: familyModel,
-      includesOpen: familyIncludesOpen,
-      message: familyMessage,
-      discountType: familyDiscountType,
-      discountModalOpen: familyDiscountModalOpen,
-    },
-    coverage: {
-      zip: coverageZip,
-      message: coverageMessage,
-      deviceMessage: deviceCheckMessage,
-    },
-    promo: {
-      open: promoOpen,
-      code: promoCode,
-      discount: promoDiscount,
-      applied: promoApplied,
-      adOpen: promoAdOpen,
-      message: promoMessage,
-    },
-    newsletter: {
-      email: newsletterEmail,
-      subscribedAt: newsletterSubscribedAt,
-      message: newsletterMessage,
-    },
-  });
 
   const navigateTo = (nextView) => {
     setView(nextView);
@@ -1540,14 +1498,40 @@ function App() {
     let isMounted = true;
     const loadState = async () => {
       try {
-        const response = await api.getState();
+        const response = await api.getBudgetwiseSession();
         if (!isMounted) return;
-        const nextBudgetwise = normalizeBudgetwiseState(response?.state?.data?.budgetwise);
+        const nextBudgetwise = normalizeBudgetwiseState(response?.session);
         applyBudgetwiseState(nextBudgetwise);
         setBackendReady(true);
-        if (response?.state?.data?.budgetwise) {
-          lastSyncedRef.current = JSON.stringify(nextBudgetwise);
-        }
+        persistedRef.current = {
+          preferences: JSON.stringify({
+            view: nextBudgetwise.view,
+            selectedPlan: nextBudgetwise.selectedPlan,
+            selectedTerm: nextBudgetwise.selectedTerm,
+            selectedSim: nextBudgetwise.selectedSim,
+            factsTerm: nextBudgetwise.factsTerm,
+            selectedBrand: nextBudgetwise.selectedBrand,
+            selectedModel: nextBudgetwise.selectedModel,
+            faqOpenId: nextBudgetwise.faqOpenId,
+          }),
+          family: JSON.stringify({
+            lines: nextBudgetwise.family.lines,
+            planType: nextBudgetwise.family.planType,
+            simTypes: nextBudgetwise.family.simTypes,
+            brands: nextBudgetwise.family.brands,
+            models: nextBudgetwise.family.models,
+            includesOpen: nextBudgetwise.family.includesOpen,
+            discountType: nextBudgetwise.family.discountType,
+            discountModalOpen: nextBudgetwise.family.discountModalOpen,
+          }),
+          coverage: nextBudgetwise.coverage.zip,
+          promo: JSON.stringify({
+            open: nextBudgetwise.promo.open,
+            code: nextBudgetwise.promo.code,
+            adOpen: nextBudgetwise.promo.adOpen,
+          }),
+          newsletter: nextBudgetwise.newsletter.email,
+        };
       } catch (err) {
         if (!isMounted) return;
         console.error(err);
@@ -1590,54 +1574,46 @@ function App() {
 
   useEffect(() => {
     if (!backendReady || isHydrating.current) return;
-    const nextState = buildBudgetwiseState();
-    const serialized = JSON.stringify(nextState);
-    if (serialized === lastSyncedRef.current) return;
-    if (syncTimerRef.current) {
-      clearTimeout(syncTimerRef.current);
-    }
-    syncTimerRef.current = setTimeout(() => {
-      api
-        .patchState({ budgetwise: nextState })
-        .then(() => {
-          lastSyncedRef.current = serialized;
-        })
-        .catch((err) => {
-          console.error(err);
-        });
-    }, 200);
-    return () => clearTimeout(syncTimerRef.current);
-  }, [
-    backendReady,
-    view,
-    selectedPlan,
-    selectedTerm,
-    selectedSim,
-    factsTerm,
-    selectedBrand,
-    selectedModel,
-    cartItems,
-    faqOpenId,
-    familyLines,
-    familyPlanType,
-    familySim,
-    familyBrand,
-    familyModel,
-    familyIncludesOpen,
-    familyMessage,
-    coverageZip,
-    coverageMessage,
-    deviceCheckMessage,
-    promoOpen,
-    promoCode,
-    promoDiscount,
-    promoApplied,
-    promoAdOpen,
-    promoMessage,
-    newsletterEmail,
-    newsletterSubscribedAt,
-    newsletterMessage,
-  ]);
+    const payload = { view, selectedPlan, selectedTerm, selectedSim, factsTerm, selectedBrand, selectedModel, faqOpenId };
+    const serialized = JSON.stringify(payload);
+    if (persistedRef.current.preferences === serialized) return;
+    persistedRef.current.preferences = serialized;
+    api.savePreferences(payload).catch(console.error);
+  }, [backendReady, view, selectedPlan, selectedTerm, selectedSim, factsTerm, selectedBrand, selectedModel, faqOpenId]);
+
+  useEffect(() => {
+    if (!backendReady || isHydrating.current) return;
+    const payload = {
+      lines: familyLines, planType: familyPlanType, simTypes: familySim,
+      brands: familyBrand, models: familyModel, includesOpen: familyIncludesOpen,
+      discountType: familyDiscountType, discountModalOpen: familyDiscountModalOpen,
+    };
+    const serialized = JSON.stringify(payload);
+    if (persistedRef.current.family === serialized) return;
+    persistedRef.current.family = serialized;
+    api.saveFamily(payload).catch(console.error);
+  }, [backendReady, familyLines, familyPlanType, familySim, familyBrand, familyModel, familyIncludesOpen, familyDiscountType, familyDiscountModalOpen]);
+
+  useEffect(() => {
+    if (!backendReady || isHydrating.current || persistedRef.current.coverage === coverageZip) return;
+    persistedRef.current.coverage = coverageZip;
+    api.saveCoverageDraft(coverageZip).catch(console.error);
+  }, [backendReady, coverageZip]);
+
+  useEffect(() => {
+    if (!backendReady || isHydrating.current) return;
+    const payload = { open: promoOpen, code: promoCode, adOpen: promoAdOpen };
+    const serialized = JSON.stringify(payload);
+    if (persistedRef.current.promo === serialized) return;
+    persistedRef.current.promo = serialized;
+    api.savePromoDraft(payload).catch(console.error);
+  }, [backendReady, promoOpen, promoCode, promoAdOpen]);
+
+  useEffect(() => {
+    if (!backendReady || isHydrating.current || persistedRef.current.newsletter === newsletterEmail) return;
+    persistedRef.current.newsletter = newsletterEmail;
+    api.saveNewsletterDraft(newsletterEmail).catch(console.error);
+  }, [backendReady, newsletterEmail]);
 
   const activePlan = useMemo(
     () => getPlanDetails(selectedTerm, selectedPlan),
@@ -1694,22 +1670,20 @@ function App() {
   const familyReady = familyLines >= FAMILY_MIN_LINES && !!familyPlanType && !!FAMILY_PLAN_TYPES[familyPlanType];
   const currentPlanInfo = familyPlanType ? FAMILY_PLAN_TYPES[familyPlanType] : null;
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     const device = selectedSim === "psim" ? null : currentDevice;
-    const nextCart = {
-      id: `cart-${Date.now()}`,
-      itemType: "plan",
-      planId: selectedPlan,
+    try {
+      const response = await api.addPlanToCart({
+      plan_id: selectedPlan,
       term: selectedTerm,
-      simType: selectedSim,
-      quantity: 1,
+      sim_type: selectedSim,
       device,
-      discountPercent: 0,
-      bundleId: "",
-      bundleLines: [],
-      addedAt: new Date().toISOString(),
-    };
-    setCartItems((prev) => [...prev, nextCart]);
+      });
+      setCartItems((prev) => [...prev, response.item]);
+    } catch (err) {
+      notify(err.message || "Unable to add plan to cart.");
+      return;
+    }
     navigateTo("cart");
     const planLabel = getPlanDisplayLabel(selectedPlan, activePlan);
     setToast(`${formatTermShort(selectedTerm)}, ${planLabel} - SIM Kit has been added to your cart.`);
@@ -1824,29 +1798,19 @@ function App() {
     navigateTo("cart");
   };
 
-  const handleQuantityChange = (itemId, delta) => {
-    setCartItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== itemId) return item;
-        if (item.itemType === "family") return item;
-        const nextQty = Math.max(1, item.quantity + delta);
-        return { ...item, quantity: nextQty };
-      })
-    );
+  const handleQuantityChange = async (itemId, delta) => {
+    const current = cartItems.find((item) => item.id === itemId);
+    if (!current || current.itemType === "family") return;
+    const response = await api.updateCartItem(itemId, { quantity: Math.max(1, current.quantity + delta) });
+    setCartItems((prev) => prev.map((item) => item.id === itemId ? response.item : item));
   };
 
-  const handleCartSimToggle = (itemId, nextSim) => {
-    setCartItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== itemId) return item;
-        if (item.itemType === "family") return item;
-        return {
-          ...item,
-          simType: nextSim,
-          device: nextSim === "psim" ? null : item.device || currentDevice,
-        };
-      })
-    );
+  const handleCartSimToggle = async (itemId, nextSim) => {
+    const response = await api.updateCartItem(itemId, {
+      sim_type: nextSim,
+      device: nextSim === "esim" ? currentDevice : null,
+    });
+    setCartItems((prev) => prev.map((item) => item.id === itemId ? response.item : item));
   };
 
   const handleBrandChange = (event) => {
@@ -1946,13 +1910,10 @@ function App() {
   };
 
   // Navigate to family plan confirmation page
-  const handleFamilyContinue = () => {
-    if (familyLines < FAMILY_MIN_LINES) {
-      setFamilyMessage("Select at least one line before continuing.");
-      return;
-    }
-    if (!familyPlanType || !FAMILY_PLAN_TYPES[familyPlanType]) {
-      setFamilyMessage("Please select a plan before continuing.");
+  const handleFamilyContinue = async () => {
+    const result = await api.validateFamily({ action: "continue", lines: familyLines, plan_id: familyPlanType });
+    setFamilyMessage(result.message);
+    if (!result.valid) {
       return;
     }
     setView("family-confirm");
@@ -1960,22 +1921,15 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleFamilyAddToCart = () => {
-    if (familyLines < FAMILY_MIN_LINES) {
-      setFamilyMessage("Select at least one line before adding to cart.");
+  const handleFamilyAddToCart = async () => {
+    const validation = await api.validateFamily({ action: "add_to_cart", lines: familyLines, plan_id: familyPlanType });
+    setFamilyMessage(validation.message);
+    if (!validation.valid) {
       return;
     }
-    if (!familyPlanType || !FAMILY_PLAN_TYPES[familyPlanType]) {
-      setFamilyMessage("Please select a plan before adding to cart.");
-      return;
-    }
-    const timestamp = new Date();
-    const bundleId = `family-${timestamp.getTime()}`;
-    const addedAt = timestamp.toISOString();
     const pricing = getFamilyPricing(familyPlanType, familyLines, familyDiscountType);
     const planInfo = FAMILY_PLAN_TYPES[familyPlanType];
     // Default to 1 month (monthly billing)
-    const upfrontTotal = pricing.monthly * 1;
     // Build line details array
     const lineDetails = [];
     for (let i = 0; i < familyLines; i++) {
@@ -1986,24 +1940,13 @@ function App() {
         model: familyModel[i] || "",
       });
     }
-    const nextItem = {
-      id: `cart-${bundleId}`,
-      itemType: "family",
-      planId: familyPlanType,
-      planName: planInfo.name,
-      term: "1", // Default to monthly billing
-      simTypes: familySim, // Array of SIM types
-      lineDetails: lineDetails, // Detailed info for each line
-      quantity: 1,
-      lines: familyLines,
-      pricePerLine: pricing.perLine,
-      monthlyTotal: pricing.monthly,
-      originalTotal: pricing.original,
-      upfrontTotal: upfrontTotal,
-      bundleId,
-      addedAt,
-    };
-    setCartItems((prev) => [...prev, nextItem]);
+    const response = await api.addFamilyToCart({
+      plan_id: familyPlanType,
+      sim_types: familySim,
+      line_details: lineDetails,
+      discount_type: familyDiscountType,
+    });
+    setCartItems((prev) => [...prev, response.item]);
     setView("cart");
     window.history.pushState({ view: "cart" }, "", "#cart");
     setToast(
@@ -2011,24 +1954,15 @@ function App() {
     );
   };
 
-  const handleCoverageCheck = () => {
-    const trimmed = coverageZip.trim();
-    if (!/^[0-9]{5}$/.test(trimmed)) {
-      setCoverageMessage("Enter a 5-digit ZIP code.");
-      return;
-    }
-    setCoverageZip(trimmed);
-    setCoverageMessage(`Coverage looks strong in ${trimmed}.`);
+  const handleCoverageCheck = async () => {
+    const result = await api.checkCoverage(coverageZip);
+    setCoverageZip(result.zip);
+    setCoverageMessage(result.message);
   };
 
-  const handleDeviceCheck = () => {
-    if (!selectedBrand || !selectedModel) {
-      setDeviceCheckMessage("Select a brand and model to check compatibility.");
-      return;
-    }
-    setDeviceCheckMessage(
-      `${selectedBrand} ${selectedModel} is compatible. You can activate with eSIM if supported.`
-    );
+  const handleDeviceCheck = async () => {
+    const result = await api.checkDevice(selectedBrand, selectedModel);
+    setDeviceCheckMessage(result.message);
   };
 
   const handleCompareSim = () => {
@@ -2078,35 +2012,16 @@ function App() {
     );
   };
 
-  const handlePromoApply = () => {
-    if (!cartItems.length) {
-      setPromoApplied(false);
-      setPromoDiscount(0);
-      setPromoMessage("Add a plan before applying a code.");
-      return;
-    }
-    const code = promoCode.trim().toUpperCase();
-    if (!code) {
-      setPromoApplied(false);
-      setPromoDiscount(0);
-      setPromoMessage("Enter a promo code.");
-      return;
-    }
-    setPromoCode(code);
-    if (code === PROMO_CODE) {
-      setPromoApplied(true);
-      setPromoDiscount(PROMO_DISCOUNT_PERCENT);
-      setPromoMessage(`Promo applied: ${PROMO_DISCOUNT_PERCENT}% off.`);
-      return;
-    }
-    setPromoApplied(false);
-    setPromoDiscount(0);
-    setPromoMessage(
-      `Promo code not recognized. Use ${PROMO_CODE} for ${PROMO_DISCOUNT_PERCENT}% off.`
-    );
+  const handlePromoApply = async () => {
+    const result = await api.applyPromo(promoCode);
+    setPromoCode(result.promo.code);
+    setPromoApplied(result.promo.applied);
+    setPromoDiscount(result.promo.discount);
+    setPromoMessage(result.promo.message);
   };
 
-  const handleRemoveItem = (itemId) => {
+  const handleRemoveItem = async (itemId) => {
+    await api.removeCartItem(itemId);
     setCartItems((prev) => {
       const next = prev.filter((item) => item.id !== itemId);
       if (!next.length) {
@@ -2155,7 +2070,7 @@ function App() {
     setCheckoutCard((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     // Validate required fields
     const requiredBilling = ["firstName", "lastName", "street", "city", "state", "zip", "email"];
     const missingBilling = requiredBilling.filter((f) => !checkoutBilling[f].trim());
@@ -2183,6 +2098,7 @@ function App() {
     }
 
     // Simulate order placement
+    await api.checkoutCart();
     notify("Order placed successfully! Thank you for your purchase.");
     setCartItems([]);
     setPromoCode("");
@@ -2193,15 +2109,11 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleSubscribe = () => {
-    const trimmed = newsletterEmail.trim();
-    if (!trimmed) {
-      setNewsletterMessage("Enter an email address.");
-      return;
-    }
-    setNewsletterEmail(trimmed);
-    setNewsletterSubscribedAt(new Date().toISOString());
-    setNewsletterMessage("Thanks for subscribing!");
+  const handleSubscribe = async () => {
+    const result = await api.subscribeNewsletter(newsletterEmail);
+    setNewsletterEmail(result.newsletter.email);
+    setNewsletterSubscribedAt(result.newsletter.subscribedAt);
+    setNewsletterMessage(result.newsletter.message);
   };
 
   const handleNavClick = (label) => {

@@ -25,5 +25,4 @@ services:
       caddy: "${CADDY_SCHEME-http://}budgetwise.${HOST_SUFFIX:-localhost}"
       caddy.0_reverse_proxy: "/api* budgetwise_web_backend:8000"
       caddy.1_reverse_proxy: "/mcp* budgetwise_web_backend:8000"
-      caddy.2_reverse_proxy: "/state-doc* budgetwise_web_backend:8000"
-      caddy.3_reverse_proxy: "budgetwise_web_frontend:80"
+      caddy.2_reverse_proxy: "budgetwise_web_frontend:80"
