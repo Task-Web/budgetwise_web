@@ -14,6 +14,7 @@ async def test_session_and_cart_preserve_legacy_fixture_fields(async_client):
         "uploads": [],
         "mint": legacy_mint,
         "evaluator_marker": {"keep": True},
+        "unrelated_top_level": {"hidden": True},
         "developer_tools_open": False,
     }
     await async_client.put(
@@ -26,6 +27,7 @@ async def test_session_and_cart_preserve_legacy_fixture_fields(async_client):
     assert session.status_code == 200
     assert set(session.json()) == {"user_id", "session"}
     assert "evaluator_marker" not in session.json()["session"]
+    assert "unrelated_top_level" not in session.json()["session"]
 
     created = await async_client.post(
         "/api/budgetwise/cart/plans",
@@ -43,6 +45,7 @@ async def test_session_and_cart_preserve_legacy_fixture_fields(async_client):
     ).json()["state"]["data"]
     assert state["mint"] == legacy_mint
     assert state["evaluator_marker"] == {"keep": True}
+    assert state["unrelated_top_level"] == {"hidden": True}
     assert state["developer_tools_open"] is False
     assert state["budgetwise"]["cartItems"] == [item]
 
@@ -52,7 +55,14 @@ async def test_cart_rejects_arbitrary_internal_and_invalid_fields(async_client):
     cookie = "budgetwise-api-validation"
     valid = {"plan_id": "15gb", "term": "6", "sim_type": "psim"}
 
-    for field in ("arbitrary_state", "developer_tools_open", "cartItems"):
+    for field in (
+        "arbitrary_state",
+        "developer_tools_open",
+        "evaluator_marker",
+        "data",
+        "state",
+        "cartItems",
+    ):
         response = await async_client.post(
             "/api/budgetwise/cart/plans",
             params={"cookie": cookie},
