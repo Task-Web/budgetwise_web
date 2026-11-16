@@ -135,3 +135,53 @@ async def test_control_plane_is_hidden_from_public_openapi(async_client):
     schema = (await async_client.get("/api/openapi.json")).json()
     assert "/api/state" not in schema["paths"]
     assert all(tag.get("name") != "state" for tag in schema.get("tags", []))
+
+
+@pytest.mark.asyncio
+async def test_family_cart_bills_monthly_by_default_and_keeps_a_chosen_term(async_client):
+    cookie = "budgetwise-api-family-term"
+    lines = [
+        {"lineNumber": n, "simType": "esim", "brand": "Apple", "model": "iPhone 16"}
+        for n in (1, 2, 3)
+    ]
+    family = {"plan_id": "plus", "sim_types": ["esim"] * 3, "line_details": lines}
+
+    monthly = await async_client.post(
+        "/api/budgetwise/cart/family", params={"cookie": cookie}, json=family
+    )
+    assert monthly.status_code == 200
+    assert monthly.json()["item"]["term"] == "1"
+    assert monthly.json()["item"]["upfrontTotal"] == monthly.json()["item"]["monthlyTotal"]
+
+    six = await async_client.post(
+        "/api/budgetwise/cart/family",
+        params={"cookie": cookie},
+        json={**family, "term": "6", "discount_type": "first_responder"},
+    )
+    assert six.status_code == 200
+    item = six.json()["item"]
+    assert (item["planName"], item["lines"], item["term"]) == ("BudgetWise Plus", 3, "6")
+    assert item["upfrontTotal"] == item["monthlyTotal"] * 6
+
+    bad_term = await async_client.post(
+        "/api/budgetwise/cart/family",
+        params={"cookie": cookie},
+        json={**family, "term": "2"},
+    )
+    assert bad_term.status_code == 422
+
+    saved = await async_client.put(
+        "/api/budgetwise/family",
+        params={"cookie": cookie},
+        json={
+            "lines": 3, "planType": "plus", "simTypes": ["esim"] * 3,
+            "brands": ["Apple"] * 3, "models": ["iPhone 16"] * 3,
+            "includesOpen": False, "term": "6",
+        },
+    )
+    assert saved.status_code == 200
+    state = (
+        await async_client.get("/api/state", params={"cookie": cookie})
+    ).json()["state"]["data"]["budgetwise"]
+    assert state["family"]["term"] == "6"
+    assert [entry["term"] for entry in state["cartItems"]] == ["1", "6"]

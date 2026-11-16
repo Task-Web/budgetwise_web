@@ -29,6 +29,8 @@ const applyCookieFromQuery = () => {
 };
 
 const PLAN_TERMS = ["3", "6", "12"];
+// Family plans bill monthly ("1") or pay a plan term upfront at the monthly rate.
+const FAMILY_TERMS = ["1", ...PLAN_TERMS];
 const PLAN_IDS = ["5gb", "15gb", "20gb", "unlimited"];
 const PLAN_LABELS = {
   "5gb": "5GB",
@@ -966,6 +968,7 @@ const DEFAULT_BUDGETWISE_STATE = {
     message: "",
     discountType: "", // "", "first_responder", "military"
     discountModalOpen: false,
+    term: "1", // "1" bills monthly; "3", "6", "12" pay that many months upfront
   },
   coverage: {
     zip: "",
@@ -994,6 +997,8 @@ const formatMoney = (value, withDecimals = false) => {
   }
   return `$${Math.round(value)}`;
 };
+
+const isMonthlyFamilyItem = (item) => item?.itemType === "family" && !(Number(item.term) > 1);
 
 const formatTermLabel = (term) => `${term}-Month`;
 const formatTermShort = (term) => `${term} Month`;
@@ -1056,7 +1061,7 @@ const normalizeCartItem = (raw) => {
   if (!raw || typeof raw !== "object") return null;
   const isFamilyItem = raw.itemType === "family" || Array.isArray(raw.bundleLines) || raw.lines > 0;
   if (isFamilyItem) {
-    const term = PLAN_TERMS.includes(String(raw.term))
+    const term = FAMILY_TERMS.includes(String(raw.term))
       ? String(raw.term)
       : DEFAULT_BUDGETWISE_STATE.family.term;
     const quantity = Math.max(1, Number(raw.quantity) || 1);
@@ -1162,7 +1167,7 @@ const normalizeBudgetwiseState = (raw = {}) => {
     FAMILY_MIN_LINES,
     FAMILY_MAX_LINES
   );
-  family.term = PLAN_TERMS.includes(String(family.term))
+  family.term = FAMILY_TERMS.includes(String(family.term))
     ? String(family.term)
     : DEFAULT_BUDGETWISE_STATE.family.term;
   // Validate planType - only allow valid plan types or empty string
@@ -1364,6 +1369,7 @@ function App() {
   const [familyDiscountModalOpen, setFamilyDiscountModalOpen] = useState(
     DEFAULT_BUDGETWISE_STATE.family.discountModalOpen
   );
+  const [familyTerm, setFamilyTerm] = useState(DEFAULT_BUDGETWISE_STATE.family.term);
   const [coverageZip, setCoverageZip] = useState("");
   const [coverageMessage, setCoverageMessage] = useState("");
   const [deviceCheckMessage, setDeviceCheckMessage] = useState("");
@@ -1433,6 +1439,7 @@ function App() {
     setFamilyMessage(budgetwiseState.family.message);
     setFamilyDiscountType(budgetwiseState.family.discountType || "");
     setFamilyDiscountModalOpen(budgetwiseState.family.discountModalOpen || false);
+    setFamilyTerm(budgetwiseState.family.term || DEFAULT_BUDGETWISE_STATE.family.term);
     setCoverageZip(budgetwiseState.coverage.zip);
     setCoverageMessage(budgetwiseState.coverage.message);
     setDeviceCheckMessage(budgetwiseState.coverage.deviceMessage);
@@ -1523,6 +1530,7 @@ function App() {
             includesOpen: nextBudgetwise.family.includesOpen,
             discountType: nextBudgetwise.family.discountType,
             discountModalOpen: nextBudgetwise.family.discountModalOpen,
+            term: nextBudgetwise.family.term,
           }),
           coverage: nextBudgetwise.coverage.zip,
           promo: JSON.stringify({
@@ -1587,12 +1595,13 @@ function App() {
       lines: familyLines, planType: familyPlanType, simTypes: familySim,
       brands: familyBrand, models: familyModel, includesOpen: familyIncludesOpen,
       discountType: familyDiscountType, discountModalOpen: familyDiscountModalOpen,
+      term: familyTerm,
     };
     const serialized = JSON.stringify(payload);
     if (persistedRef.current.family === serialized) return;
     persistedRef.current.family = serialized;
     api.saveFamily(payload).catch(console.error);
-  }, [backendReady, familyLines, familyPlanType, familySim, familyBrand, familyModel, familyIncludesOpen, familyDiscountType, familyDiscountModalOpen]);
+  }, [backendReady, familyLines, familyPlanType, familySim, familyBrand, familyModel, familyIncludesOpen, familyDiscountType, familyDiscountModalOpen, familyTerm]);
 
   useEffect(() => {
     if (!backendReady || isHydrating.current || persistedRef.current.coverage === coverageZip) return;
@@ -1929,7 +1938,7 @@ function App() {
     }
     const pricing = getFamilyPricing(familyPlanType, familyLines, familyDiscountType);
     const planInfo = FAMILY_PLAN_TYPES[familyPlanType];
-    // Default to 1 month (monthly billing)
+    const termMonths = Number(familyTerm) || 1;
     // Build line details array
     const lineDetails = [];
     for (let i = 0; i < familyLines; i++) {
@@ -1945,12 +1954,16 @@ function App() {
       sim_types: familySim,
       line_details: lineDetails,
       discount_type: familyDiscountType,
+      term: familyTerm,
     });
     setCartItems((prev) => [...prev, response.item]);
     setView("cart");
     window.history.pushState({ view: "cart" }, "", "#cart");
+    const lineText = `${familyLines} line${familyLines > 1 ? "s" : ""}`;
     setToast(
-      `${planInfo.name} added: ${familyLines} line${familyLines > 1 ? "s" : ""} at $${pricing.monthly}/mo.`
+      termMonths > 1
+        ? `${planInfo.name} added: ${lineText} at $${pricing.monthly * termMonths} for ${formatTermPlural(familyTerm)}.`
+        : `${planInfo.name} added: ${lineText} at $${pricing.monthly}/mo.`
     );
   };
 
@@ -2292,6 +2305,7 @@ function App() {
                         const pricePerLine = item.pricePerLine || 0;
                         const monthlyTotal = item.monthlyTotal || 0;
                         const lineDetails = item.lineDetails || [];
+                        const termMonths = Number(item.term) > 1 ? Number(item.term) : 1;
                         // Calculate prices for different terms
                         const price1Month = monthlyTotal;
                         const price3Months = monthlyTotal * 3;
@@ -2306,7 +2320,7 @@ function App() {
                               <div className="cart-item-details">
                                 <div className="cart-item-heading">
                                   <span>
-                                    Monthly Plan - {lineCount} line{lineCount > 1 ? "s" : ""}
+                                    {termMonths > 1 ? `${formatTermLabel(item.term)} Plan` : "Monthly Plan"} - {lineCount} line{lineCount > 1 ? "s" : ""}
                                   </span>
                                   <div className="cart-pill-group">
                                       <span className="cart-pill cart-pill-alt">
@@ -2316,7 +2330,8 @@ function App() {
                                 </div>
                                 <div className="cart-item-pricing">
                                 <span className="cart-price">
-                                  {formatMoney(itemSubtotal, true)} monthly
+                                  {formatMoney(itemSubtotal, true)}{" "}
+                                  {termMonths > 1 ? `for ${formatTermPlural(item.term).toLowerCase()}` : "monthly"}
                                 </span>
                                 {pricePerLine > 0 && (
                                   <span className="cart-price-per-line">
@@ -2344,7 +2359,9 @@ function App() {
                               {/* Show monthly billing info */}
                               <div className="cart-billing-info">
                                 <p className="cart-billing-notice">
-                                  Monthly billing - auto-renews each month until cancelled
+                                  {termMonths > 1
+                                    ? `Paid upfront for ${formatTermPlural(item.term).toLowerCase()} at ${formatMoney(monthlyTotal, true)}/mo`
+                                    : "Monthly billing - auto-renews each month until cancelled"}
                                 </p>
                                 <div className="cart-estimate-section">
                                   <p className="cart-estimate-title">Estimated costs:</p>
@@ -2795,26 +2812,28 @@ function App() {
 
                       if (isFamilyItem) {
                         const lineCount = item.lines || 1;
-                        const monthlyTotal = item.monthlyTotal || 0;
-                        // Apply promo discount to monthly total
-                        const monthlyWithPromo = promoApplied
-                          ? monthlyTotal * (1 - promoDiscount / 100)
-                          : monthlyTotal;
+                        const prepaid = !isMonthlyFamilyItem(item);
+                        // A monthly family plan shows its monthly charge; a prepaid one its upfront total
+                        const familyPrice = prepaid ? itemSubtotal : item.monthlyTotal || 0;
+                        const familyPriceWithPromo = promoApplied
+                          ? familyPrice * (1 - promoDiscount / 100)
+                          : familyPrice;
+                        const per = prepaid ? "" : "/mo";
                         return (
                           <div className="order-table-row" key={item.id}>
                             <div className="order-product-info">
                               {promoApplied && <span className="order-discount-badge">{promoDiscount}% OFF</span>}
                               <span className="order-product-name">
-                                Monthly Plan - {lineCount} line{lineCount > 1 ? "s" : ""}
+                                {prepaid ? `${formatTermLabel(item.term)} Plan` : "Monthly Plan"} - {lineCount} line{lineCount > 1 ? "s" : ""}
                               </span>
                               <span className="order-product-meta">
                                 SIM Type: {item.simType === "esim" ? "eSIM" : "Physical SIM"}
                               </span>
                             </div>
                             <div className="order-product-price">
-                              <span className="order-price">{formatMoney(monthlyWithPromo, true)}/mo</span>
+                              <span className="order-price">{formatMoney(familyPriceWithPromo, true)}{per}</span>
                               {promoApplied && (
-                                <span className="order-original-price">{formatMoney(monthlyTotal, true)}/mo</span>
+                                <span className="order-original-price">{formatMoney(familyPrice, true)}{per}</span>
                               )}
                             </div>
                           </div>
@@ -2849,10 +2868,10 @@ function App() {
                     {(() => {
                       // Calculate upfront total (pay today) and monthly total
                       const upfrontSubtotal = cartItems
-                        .filter((item) => item.itemType !== "family")
+                        .filter((item) => !isMonthlyFamilyItem(item))
                         .reduce((sum, item) => sum + getCartItemSubtotal(item), 0);
                       const monthlySubtotal = cartItems
-                        .filter((item) => item.itemType === "family")
+                        .filter((item) => isMonthlyFamilyItem(item))
                         .reduce((sum, item) => sum + (item.monthlyTotal || 0), 0);
                       
                       // Apply promo discount
@@ -3584,7 +3603,7 @@ function App() {
                 <SimCardGraphic />
               </div>
               <div className="right-content">
-                <p className="plan-pay-monthly-label">Pay monthly</p>
+                <p className="plan-pay-monthly-label">{familyTerm === "1" ? "Pay monthly" : "Pay upfront"}</p>
                 <h1 className="plan-selection-title">
                   {FAMILY_PLAN_TYPES[familyPlanType]?.name || "Family Plan"} - {familyLines} Line{familyLines > 1 ? "s" : ""}
                 </h1>
@@ -3675,12 +3694,33 @@ function App() {
                   </div>
                 ))}
 
+                {/* Billing term: monthly, or a plan term paid upfront */}
+                <div className="family-term-section">
+                  <p className="sim-type-label">
+                    Billing: <strong>{familyTerm === "1" ? "Pay monthly" : `${formatTermPlural(familyTerm)} upfront`}</strong>
+                  </p>
+                  <div className="term-toggle">
+                    {FAMILY_TERMS.map((term) => (
+                      <button
+                        type="button"
+                        key={term}
+                        className={`term-tab ${familyTerm === term ? "is-active" : ""}`}
+                        onClick={() => setFamilyTerm(term)}
+                      >
+                        {term === "1" ? "Monthly" : formatTermLabel(term)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Pricing Summary */}
                 <div className="confirm-pricing-section">
                   <div className="confirm-pricing-row">
                     <span>Subtotal:</span>
                     <strong className="confirm-price">
-                      ${getFamilyPricing(familyPlanType, familyLines, familyDiscountType).monthly.toFixed(2)} monthly
+                      {familyTerm === "1"
+                        ? `$${getFamilyPricing(familyPlanType, familyLines, familyDiscountType).monthly.toFixed(2)} monthly`
+                        : `$${(getFamilyPricing(familyPlanType, familyLines, familyDiscountType).monthly * Number(familyTerm)).toFixed(2)} for ${formatTermPlural(familyTerm).toLowerCase()}`}
                           </strong>
                       </div>
                   <div className="confirm-pricing-row confirm-pricing-original">
