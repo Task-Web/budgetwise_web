@@ -95,6 +95,8 @@ class BudgetwiseFamilyRequest(StrictModel):
     includesOpen: bool
     discountType: Literal["", "military", "first_responder"] = ""
     discountModalOpen: bool = False
+    # Billing term chosen on the family page: "1" is monthly billing, the rest are months paid upfront.
+    term: Literal["1", "3", "6", "12"] = "1"
 
 
 class BudgetwiseCoverageDraftRequest(StrictModel):
@@ -138,6 +140,7 @@ class BudgetwiseFamilyCartRequest(StrictModel):
     sim_types: list[Literal["esim", "psim"]]
     line_details: list[BudgetwiseLine]
     discount_type: Literal["", "military", "first_responder"] = ""
+    term: Literal["1", "3", "6", "12"] = "1"
 
 
 class BudgetwiseCartUpdateRequest(StrictModel):

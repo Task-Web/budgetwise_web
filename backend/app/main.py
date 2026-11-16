@@ -50,7 +50,7 @@ DEFAULT_BUDGETWISE = {
     "family": {
         "lines": 1, "planType": "", "simTypes": ["esim"], "brands": [""],
         "models": [""], "includesOpen": False, "message": "", "discountType": "",
-        "discountModalOpen": False,
+        "discountModalOpen": False, "term": "1",
     },
     "coverage": {"zip": "", "message": "", "deviceMessage": ""},
     "promo": {"open": False, "code": "", "discount": 0, "applied": False, "adOpen": True, "message": ""},
@@ -394,13 +394,15 @@ async def add_budgetwise_family_plan(
         raise HTTPException(status_code=422, detail="SIM selections must match family lines")
     table = FAMILY_DISCOUNT_PRICING if payload.discount_type in {"military", "first_responder"} else FAMILY_PRICING
     monthly, original = table[payload.plan_id][lines]
+    # "1" bills monthly (the upfront charge is the first month); a longer term is paid upfront at the monthly rate.
+    months = int(payload.term)
     bundle_id = f"family-{uuid.uuid4().hex[:12]}"
     item = {
         "id": f"cart-{bundle_id}", "itemType": "family", "planId": payload.plan_id,
-        "planName": FAMILY_NAMES[payload.plan_id], "term": "1", "simTypes": payload.sim_types,
+        "planName": FAMILY_NAMES[payload.plan_id], "term": payload.term, "simTypes": payload.sim_types,
         "lineDetails": [line.model_dump() for line in payload.line_details], "quantity": 1,
         "lines": lines, "pricePerLine": monthly / lines, "monthlyTotal": monthly,
-        "originalTotal": original, "upfrontTotal": monthly, "bundleId": bundle_id,
+        "originalTotal": original, "upfrontTotal": monthly * months, "bundleId": bundle_id,
         "addedAt": datetime.now(timezone.utc).isoformat(),
     }
     def mutate(session: Dict[str, Any]) -> Dict[str, Any]:

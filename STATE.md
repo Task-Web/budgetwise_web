@@ -40,7 +40,7 @@ The BudgetWise demo stores UI state under `data.budgetwise`:
   - `id` (string)
   - `itemType` (string): `"plan"` or `"family"`.
   - `planId` (string)
-  - `term` (string)
+  - `term` (string): `"3"`, `"6"`, or `"12"` months paid upfront; family items may also be `"1"` (monthly billing).
   - `simType` (string)
   - `quantity` (number)
   - `device` (object or null): `{ brand, model }` for eSIM.
@@ -52,7 +52,7 @@ The BudgetWise demo stores UI state under `data.budgetwise`:
 - `faqOpenId` (string): Currently expanded FAQ item id.
 - `family` (object)
   - `lines` (number)
-  - `term` (string): `"3"`, `"6"`, or `"12"` for family plan duration.
+  - `term` (string): `"1"` (monthly billing, the default), or `"3"`, `"6"`, `"12"` months paid upfront.
   - `selections` (string[]): Plan ids per line (empty string when unselected).
   - `simType` (string): `"esim"` or `"psim"` for the family bundle.
   - `brand` (string): Device brand for family eSIM selection.
